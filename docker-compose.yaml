@@ -1,34 +1,33 @@
-version: '3.8'
 services:
-  # --- BANCO DE DADOS (Onde os dados serão armazenados) ---
-  postgres:
+  # Banco de Dados (Data Warehouse)
+  postgres_dw:
     image: postgres:15
     container_name: postgres_dw
     environment:
-      - POSTGRES_USER=airflow
-      - POSTGRES_PASSWORD=airflow
-      - POSTGRES_DB=analytics
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=main_database
     ports:
-      - "5432:5432"
+      - "5433:5432" # Acessar pelo DBeaver usando a porta 5433
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # --- AIRFLOW (O maestro que orquestra os scripts) ---
-  airflow:
-    image: apache/airflow:2.7.1-python3.9
+  # Airflow (Orquestrador)
+  airflow_app:
+    image: apache/airflow:2.7.1
     container_name: airflow_app
     environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:admin@postgres_dw:5432/main_database
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/analytics
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+    ports:
+      - "8080:8080" # Acessar o Airflow em localhost:8080
     volumes:
       - ./dags:/opt/airflow/dags
-      - ./dbt_project:/opt/airflow/dbt_project
-    ports:
-      - "8080:8080"
-    command: standalone
     depends_on:
-      - postgres
+      - postgres_dw
+    command: standalone
 
 volumes:
   postgres_data:
