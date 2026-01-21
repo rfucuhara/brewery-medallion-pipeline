@@ -1,33 +1,46 @@
-services:
-  # Banco de Dados (Data Warehouse)
-  postgres_dw:
-    image: postgres:15
-    container_name: postgres_dw
-    environment:
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin
-      - POSTGRES_DB=main_database
-    ports:
-      - "5433:5432" # Acessar pelo DBeaver usando a porta 5433
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+version: '3.8'
 
-  # Airflow (Orquestrador)
+services:
+  airflow_db:
+    image: postgres:15
+    container_name: airflow_db
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+
   airflow_app:
     image: apache/airflow:2.7.1
     container_name: airflow_app
     environment:
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:admin@postgres_dw:5432/main_database
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow_db:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
-      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - AIRFLOW__CORE__TEST_CONNECTION=Enabled
+      
+      # Variáveis lidas do .env
+      - SUPABASE_HOST=${SUPABASE_HOST}
+      - SUPABASE_USER=${SUPABASE_USER}
+      - SUPABASE_PASSWORD=${SUPABASE_PASSWORD}
+      - SUPABASE_DB=${SUPABASE_DB}
+      - SUPABASE_PORT=${SUPABASE_PORT}
     ports:
-      - "8080:8080" # Acessar o Airflow em localhost:8080
+      - "8080:8080"
     volumes:
       - ./dags:/opt/airflow/dags
+      - ./dbt:/opt/airflow/dbt
+      - ./plugins:/opt/airflow/plugins
     depends_on:
-      - postgres_dw
+      airflow_db:
+        condition: service_healthy
     command: standalone
 
 volumes:
-  postgres_data:
+  airflow_db_data:
