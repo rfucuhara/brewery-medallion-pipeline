@@ -17,30 +17,51 @@ services:
       - airflow_db_data:/var/lib/postgresql/data
 
   airflow_app:
-    image: apache/airflow:2.7.1
+    build: .
     container_name: airflow_app
+    # Removido user: root para seguir as boas práticas da imagem oficial
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow_db:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__TEST_CONNECTION=Enabled
-      
-      # Variáveis lidas do .env
+      # Ajustado para o caminho padrão que definimos no Dockerfile
+      - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+      # --- AUTOMATED CONNECTIONS ---
+      # Esta linha cria a conexão 'supabase_conn' automaticamente ao subir o container
+      - AIRFLOW_CONN_SUPABASE_CONN=postgresql://${SUPABASE_USER}:${SUPABASE_PASSWORD}@${SUPABASE_HOST}:${SUPABASE_PORT}/${SUPABASE_DB}
+      # Conexão com o Supabase
       - SUPABASE_HOST=${SUPABASE_HOST}
       - SUPABASE_USER=${SUPABASE_USER}
       - SUPABASE_PASSWORD=${SUPABASE_PASSWORD}
       - SUPABASE_DB=${SUPABASE_DB}
       - SUPABASE_PORT=${SUPABASE_PORT}
+
+      # Configuração de E-mail
+      - AIRFLOW__SMTP__SMTP_HOST=${AIRFLOW__SMTP__SMTP_HOST:-smtp.gmail.com}
+      - AIRFLOW__SMTP__SMTP_STARTTLS=${AIRFLOW__SMTP__SMTP_STARTTLS:-True}
+      - AIRFLOW__SMTP__SMTP_SSL=${AIRFLOW__SMTP__SMTP_SSL:-False}
+      - AIRFLOW__SMTP__SMTP_USER=${AIRFLOW__SMTP__SMTP_USER}
+      - AIRFLOW__SMTP__SMTP_PASSWORD=${AIRFLOW__SMTP__SMTP_PASSWORD}
+      - AIRFLOW__SMTP__SMTP_PORT=${AIRFLOW__SMTP__SMTP_PORT:-587}
+      - AIRFLOW__SMTP__SMTP_MAIL_FROM=${AIRFLOW__SMTP__SMTP_MAIL_FROM}
+
     ports:
       - "8080:8080"
     volumes:
+      - .:/opt/airflow
+      # Mapear explicitamente a pasta tests para garantir visibilidade
+      - ./tests:/opt/airflow/tests 
       - ./dags:/opt/airflow/dags
-      - ./dbt:/opt/airflow/dbt
-      - ./plugins:/opt/airflow/plugins
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
     depends_on:
       airflow_db:
         condition: service_healthy
-    command: standalone
+    command: >
+      bash -c "airflow db init && 
+               airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin && 
+               airflow standalone"
 
 volumes:
   airflow_db_data:
