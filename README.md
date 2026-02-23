@@ -27,10 +27,10 @@ cd brewery-medallion-pipeline
 For security reasons, the .env secrets file is not included in the repository. You must create it from the provided template:
     1.In the project root, copy the example file:
 
-    ```bash
+```bash
     # On Windows (PowerShell) or Linux/Bash:
     cp .env.example .env
-    ```
+```
     2.Open the newly created .env file and fill it with your Supabase (PostgreSQL) credentials and your SMTP (Gmail/App Password) to receive failure alerts.
 
     Technical Note: The database connection is automatically injected into Airflow via environment variables, ensuring the pipeline starts pre-configured without requiring manual setup in the UI.
@@ -38,9 +38,9 @@ For security reasons, the .env secrets file is not included in the repository. Y
 ### 4. Environment Initialization
 Run the command below to build the images (including Spark and Java 11) and spin up all services:
 
-    ```bash
-    docker-compose up -d --build
-    ```
+```bash
+docker-compose up -d --build
+```
 
 ### 5. Accessing the Tools
 Once the command finishes and the containers become healthy, the services will be available at the following addresses:
