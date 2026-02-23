@@ -117,7 +117,7 @@ The pipeline features safety gates at every stage:
 ### 1. Airflow Orchestration
 Below is the execution of the Medallion pipeline. All tasks completed successfully, respecting the dependencies between Bronze, Silver, and Gold layers.
 
-![Airflow Success](./img/airflow.png)
+![Airflow Success](./img/airflow1.png)
 
 ### 2. Data Partitioning (Silver Layer)
 Visual proof of the PySpark partitioning logic by location (country and state), optimizing data lake storage.
