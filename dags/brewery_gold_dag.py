@@ -37,7 +37,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='brewery_aggregation_gold_pyspark_v4',
+    dag_id='brewery_aggregation_gold_pyspark',
     default_args=default_args,
     schedule=[SILVER_BREWERIES_DATASET],
     start_date=datetime(2024, 1, 1),

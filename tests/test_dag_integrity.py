@@ -9,6 +9,6 @@ def test_dag_loaded_self_check():
 def test_dag_ids():
     dagbag = DagBag(dag_folder='dags/', include_examples=False)
     # Garante que suas DAGs principais estão presentes
-    expected_dags = ['brewery_ingestion_bronze_v3', 'brewery_transformation_silver_pyspark_v4', 'brewery_aggregation_gold_pyspark_v4']
+    expected_dags = ['brewery_ingestion_bronze', 'brewery_transformation_silver_pyspark', 'brewery_aggregation_gold_pyspark']
     for dag_id in expected_dags:
         assert dag_id in dagbag.dags
