@@ -83,7 +83,7 @@ def brewery_gold_pipeline():
         if not all_runs:
             raise AirflowFailException("Nenhuma pasta de execução 'run_' encontrada na Silver.")
         
-        # Ordenamos para pegar o timestamp mais recente (alfabeticamente run_2026...)
+        # Ordenamos para pegar o timestamp mais recente
         last_run_folder = sorted(all_runs)[-1]
         full_last_run_path = os.path.join(base_path_silver, last_run_folder)
         
@@ -98,12 +98,16 @@ def brewery_gold_pipeline():
             .getOrCreate()
 
         try:
-            # 1. Leitura da última pasta específica identificada
-            # Usamos o wildcard '/*' para capturar as partições (country/state) dentro da run
-            # O basePath é essencial para reconstruir as colunas de partição 
-            df_silver = spark.read \
-                .option("basePath", full_last_run_path) \
-                .parquet(f"{full_last_run_path}/*")
+            # --- AJUSTE NA LEITURA ---
+            # Ao ler o diretório raiz da run sem o wildcard '/*', o Spark
+            # identifica automaticamente as partições de diretório (country/state_province)
+            df_silver = spark.read.parquet(full_last_run_path)
+            
+            silver_count = df_silver.count()
+            logging.info(f"Registros lidos da Silver na pasta {last_run_folder}: {silver_count}")
+
+            if silver_count == 0:
+                raise AirflowFailException("A pasta Silver da rodada está vazia.")
 
             # 2. Agregação Analítica: Quantidade por tipo e localização 
             df_gold = df_silver.groupBy("country", "state_province", "brewery_type") \
@@ -129,11 +133,12 @@ def brewery_gold_pipeline():
             # 4. Escrita no Data Lake (Gold Parquet) 
             gold_output_path = f'/opt/airflow/data/gold_brewery_aggregation/run_{run_id}'
             
+            # Coalesce(1) para gerar um arquivo consolidado na Gold (análise fim de linha)
             df_gold.coalesce(1).write \
                 .mode("overwrite") \
                 .parquet(gold_output_path)
             
-            logging.info(f"Agregação Gold finalizada com {gold_row_count} registros.")
+            logging.info(f"Agregação Gold finalizada com {gold_row_count} grupos de registros.")
             return gold_row_count
 
         finally:

@@ -19,18 +19,21 @@ services:
   airflow_app:
     build: .
     container_name: airflow_app
-    # Removido user: root para seguir as boas práticas da imagem oficial
+    # --- AJUSTE DE PERMISSÃO ---
+    # No Windows, usar root (0) resolve o erro de Mkdirs do Spark ao criar subpastas de partição
+    user: "0:0" 
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow_db:5432/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__TEST_CONNECTION=Enabled
-      # Ajustado para o caminho padrão que definimos no Dockerfile
+      # --- AJUSTE DE ESTABILIDADE ---
+      # Evita problemas de permissão em sistemas de arquivos montados (Windows)
+      - AIRFLOW__CORE__UNIT_TEST_MODE=True
       - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+      
       # --- AUTOMATED CONNECTIONS ---
-      # Esta linha cria a conexão 'supabase_conn' automaticamente ao subir o container
       - AIRFLOW_CONN_SUPABASE_CONN=postgresql://${SUPABASE_USER}:${SUPABASE_PASSWORD}@${SUPABASE_HOST}:${SUPABASE_PORT}/${SUPABASE_DB}
-      # Conexão com o Supabase
       - SUPABASE_HOST=${SUPABASE_HOST}
       - SUPABASE_USER=${SUPABASE_USER}
       - SUPABASE_PASSWORD=${SUPABASE_PASSWORD}
@@ -50,7 +53,6 @@ services:
       - "8080:8080"
     volumes:
       - .:/opt/airflow
-      # Mapear explicitamente a pasta tests para garantir visibilidade
       - ./tests:/opt/airflow/tests 
       - ./dags:/opt/airflow/dags
       - ./data:/opt/airflow/data
@@ -58,8 +60,11 @@ services:
     depends_on:
       airflow_db:
         condition: service_healthy
+    # --- AJUSTE NO COMMAND ---
+    # Adicionado 'chmod' para garantir que a pasta data seja gravável antes de iniciar
     command: >
-      bash -c "airflow db init && 
+      bash -c "chmod -R 777 /opt/airflow/data && 
+               airflow db init && 
                airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin && 
                airflow standalone"
 

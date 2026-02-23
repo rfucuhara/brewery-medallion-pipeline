@@ -34,7 +34,7 @@ default_args = {
     dag_id='brewery_ingestion_bronze',
     default_args=default_args,
     schedule_interval='0 9 * * *', # Ajustado para 9h da manhã
-    start_date=datetime(2024, 1, 1),
+    start_date=datetime(2026, 2, 22),
     catchup=False,
     tags=['bees', 'bulk_upsert', 'performance', 'real_incremental'],
 )
