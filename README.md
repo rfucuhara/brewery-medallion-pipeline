@@ -25,15 +25,16 @@ cd brewery-medallion-pipeline
 ```
 ### 3. Credentials Configuration (Required)
 For security reasons, the .env secrets file is not included in the repository. You must create it from the provided template:
-    1.In the project root, copy the example file:
+
+1.In the project root, copy the example file:
 
 ```bash
     # On Windows (PowerShell) or Linux/Bash:
     cp .env.example .env
 ```
-    2.Open the newly created .env file and fill it with your Supabase (PostgreSQL) credentials and your SMTP (Gmail/App Password) to receive failure alerts.
+2.Open the newly created .env file and fill it with your Supabase (PostgreSQL) credentials and your SMTP (Gmail/App Password) to receive failure alerts.
 
-    Technical Note: The database connection is automatically injected into Airflow via environment variables, ensuring the pipeline starts pre-configured without requiring manual setup in the UI.
+Technical Note: The database connection is automatically injected into Airflow via environment variables, ensuring the pipeline starts pre-configured without requiring manual setup in the UI.
 
 ### 4. Environment Initialization
 Run the command below to build the images (including Spark and Java 11) and spin up all services:
