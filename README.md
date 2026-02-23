@@ -110,3 +110,21 @@ The pipeline features safety gates at every stage:
 * **API Validation:** Records missing mandatory fields (`id`, `name`, `brewery_type`) are discarded before reaching the Bronze layer.
 * **Volumetric Checks:** If the record count in the database diverges from the Spark processed count, the DAG is aborted (`AirflowFailException`), preventing corrupted data from reaching the Gold layer.
 * **Smart Upserts:** The use of `execute_values` with `ON CONFLICT DO UPDATE` ensures that duplicate records are updated rather than triggering primary key errors, maintaining a "Single Source of Truth."
+
+
+## 🖼️ Project Gallery
+
+### 1. Airflow Orchestration
+Below is the execution of the Medallion pipeline. All tasks completed successfully, respecting the dependencies between Bronze, Silver, and Gold layers.
+
+![Airflow Success](./img/airflow.png)
+
+### 2. Data Partitioning (Silver Layer)
+Visual proof of the PySpark partitioning logic by location (country and state), optimizing data lake storage.
+
+![Partitioning Folder Structure](./img/organization.png)
+
+### 3. Gold Layer Results (Supabase)
+Final aggregated data ready for consumption in the Data Warehouse.
+
+![Supabase Results](./img/supabase.png)
