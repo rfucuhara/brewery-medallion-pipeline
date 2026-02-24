@@ -19,7 +19,7 @@ services:
   airflow_app:
     build: .
     container_name: airflow_app
-    # --- AJUSTE DE PERMISSÃO ---
+   
     user: "0:0" 
     environment:
       - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
@@ -27,7 +27,7 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__TEST_CONNECTION=Enabled
-      # --- AJUSTE DE ESTABILIDADE ---
+      
       - AIRFLOW__CORE__UNIT_TEST_MODE=True
       - JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
       
@@ -39,7 +39,7 @@ services:
       - SUPABASE_DB=${SUPABASE_DB}
       - SUPABASE_PORT=${SUPABASE_PORT}
 
-      # Configuração de E-mail
+      # Email's Settings
       - AIRFLOW__SMTP__SMTP_HOST=${AIRFLOW__SMTP__SMTP_HOST:-smtp.gmail.com}
       - AIRFLOW__SMTP__SMTP_STARTTLS=${AIRFLOW__SMTP__SMTP_STARTTLS:-True}
       - AIRFLOW__SMTP__SMTP_SSL=${AIRFLOW__SMTP__SMTP_SSL:-False}

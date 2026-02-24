@@ -6,24 +6,26 @@ from airflow.utils.email import send_email
 from datetime import datetime, timedelta
 import os
 import logging
+from airflow.configuration import conf
 
-# Importações do PySpark
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# Dataset da Silver (O gatilho que acorda a Gold automaticamente)
+# Silver Dataset (Trigger that automatically kicks off the Gold layer)
 SILVER_BREWERIES_DATASET = Dataset("postgres://supabase/silver/breweries")
 
 def notify_gold_failure(context):
-    """Notificação resiliente: não quebra a DAG se o SMTP não estiver configurado."""
+    """Resilient notification: does not break the DAG if SMTP is not configured."""
     try:
         ti = context['task_instance']
-        subject = f"🚨 Falha na Camada Gold: {ti.dag_id}"
-        body = f"Erro na task {ti.task_id}. Verifique os logs: {ti.log_url}"
-        send_email(to='rfucuhara1401@gmail.com', subject=subject, html_content=body)
-        logging.info("Notificação de erro enviada.")
+        subject = f"🚨 Gold Transformation Failure {ti.dag_id}"
+        body = f"Task Error {ti.task_id}. Verify logs: {ti.log_url}"
+        receiver_email = conf.get('smtp', 'smtp_user')
+        send_email(to=receiver_email, subject=subject, html_content=body)
+        logging.info("Notification erro sended.")
     except Exception as e:
-        logging.error(f"Falha ao enviar e-mail de alerta: {e}")
+        logging.error(f"Fail: {e}")
 
 default_args = {
     'owner': 'Rafael',
@@ -49,14 +51,14 @@ def brewery_gold_pipeline():
     @task
     def check_silver_delta():
         """
-        Gatekeeper: Compara Silver (ingested_at) com Gold (processed_at).
+        Gatekeeper: Compare Silver (ingested_at) with Gold (processed_at).
         """
         pg_hook = PostgresHook(postgres_conn_id='supabase_conn')
         
         latest_silver = pg_hook.get_first("SELECT MAX(ingested_at) FROM silver.breweries")[0]
         
         if not latest_silver:
-            raise AirflowFailException("DQ Fail: Camada Silver está vazia.")
+            raise AirflowFailException("DQ Fail: Silver Layer is empty.")
 
         try:
             latest_gold = pg_hook.get_first("SELECT MAX(processed_at) FROM gold.brewery_counts")[0]
@@ -73,21 +75,21 @@ def brewery_gold_pipeline():
     @task
     def aggregate_and_load_gold(**context):
         """
-        Agregação Gold: Identifica a última pasta da Silver e gera a visão analítica.
+        Gold Aggregation: Identifies the latest Silver folder and generates the analytical view
         """
         run_id = context['logical_date'].strftime("%Y%m%d_%H%M")
         base_path_silver = '/opt/airflow/data/silver_breweries_pyspark'
         
-        # --- Lógica de identificação da última execução bem-sucedida ---
+        # --- Logic to identify the last successful run ---
         all_runs = [d for d in os.listdir(base_path_silver) if d.startswith('run_')]
         if not all_runs:
-            raise AirflowFailException("Nenhuma pasta de execução 'run_' encontrada na Silver.")
+            raise AirflowFailException("No 'run_' execution folders found in Silver.")
         
-        # Ordenamos para pegar o timestamp mais recente
+        # Sorting to retrieve the latest timestamp
         last_run_folder = sorted(all_runs)[-1]
         full_last_run_path = os.path.join(base_path_silver, last_run_folder)
         
-        logging.info(f"Processando dados da última execução Silver: {last_run_folder}")
+        logging.info(f"Processing data from the latest Silver run: {last_run_folder}")
 
         pg_hook = PostgresHook(postgres_conn_id='supabase_conn')
         pg_hook.run("CREATE SCHEMA IF NOT EXISTS gold;")
@@ -98,25 +100,24 @@ def brewery_gold_pipeline():
             .getOrCreate()
 
         try:
-            # --- AJUSTE NA LEITURA ---
-            # Ao ler o diretório raiz da run sem o wildcard '/*', o Spark
-            # identifica automaticamente as partições de diretório (country/state_province)
+            # By reading the run's root directory without the '/*' wildcard, 
+            # Spark automatically identifies the directory partitions (country/state_province)
             df_silver = spark.read.parquet(full_last_run_path)
             
             silver_count = df_silver.count()
-            logging.info(f"Registros lidos da Silver na pasta {last_run_folder}: {silver_count}")
+            logging.info(f"Records read from Silver in the folder {last_run_folder}: {silver_count}")
 
             if silver_count == 0:
-                raise AirflowFailException("A pasta Silver da rodada está vazia.")
+                raise AirflowFailException("The run's Silver folder is empty.")
 
-            # 2. Agregação Analítica: Quantidade por tipo e localização 
+            # 2. Analytical Aggregation: Count by type and location
             df_gold = df_silver.groupBy("country", "state_province", "brewery_type") \
                 .agg(F.count("*").alias("total_breweries")) \
                 .withColumn("processed_at", F.current_timestamp())
 
             gold_row_count = df_gold.count()
 
-            # 3. Escrita no Banco (JDBC)
+            # 3. Database Write (JDBC)
             conn = pg_hook.get_connection('supabase_conn')
             jdbc_url = f"jdbc:postgresql://{conn.host}:{conn.port}/{conn.schema}?prepareThreshold=0"
 
@@ -130,15 +131,15 @@ def brewery_gold_pipeline():
                 .mode("overwrite") \
                 .save()
 
-            # 4. Escrita no Data Lake (Gold Parquet) 
+            # 4. Data Lake Persistence (Gold Parquet Layer)
             gold_output_path = f'/opt/airflow/data/gold_brewery_aggregation/run_{run_id}'
             
-            # Coalesce(1) para gerar um arquivo consolidado na Gold (análise fim de linha)
+            
             df_gold.coalesce(1).write \
                 .mode("overwrite") \
                 .parquet(gold_output_path)
             
-            logging.info(f"Agregação Gold finalizada com {gold_row_count} grupos de registros.")
+            logging.info(f"Gold aggregation completed with {gold_row_count} record groups.")
             return gold_row_count
 
         finally:
@@ -155,9 +156,9 @@ def brewery_gold_pipeline():
         )[0]
         
         if actual_groups != expected_groups:
-            raise AirflowFailException(f"Erro de integridade Gold: Esperado {expected_groups}, Banco {actual_groups}")
+            raise AirflowFailException(f"Gold Integrity Error: Expected {expected_groups}, Database {actual_groups}")
 
-    # Fluxo de Orquestração
+    # Orchestration Workflow
     check_delta = check_silver_delta()
     aggregation = aggregate_and_load_gold()
     

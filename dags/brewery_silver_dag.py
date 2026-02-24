@@ -4,23 +4,25 @@ from airflow.datasets import Dataset
 from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.utils.email import send_email
 from airflow.utils import timezone
+from airflow.configuration import conf
 from datetime import datetime, timedelta
 import os
 import logging
 
-# Importações do PySpark
+# PySpark Imports
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-# Datasets para orquestração orientada a eventos
+# Datasets for event-driven orchestration
 BRONZE_BREWERIES_DATASET = Dataset("postgres://supabase/bronze/breweries")
 SILVER_BREWERIES_DATASET = Dataset("postgres://supabase/silver/breweries")
 
 def notify_silver_failure(context):
     ti = context['task_instance']
-    subject = f"⚠️ Falha na Transformação Silver: {ti.dag_id}"
-    body = f"Erro na task {ti.task_id}. Ver logs em: {ti.log_url}"
-    send_email(to='rfucuhara1401@gmail.com', subject=subject, html_content=body)
+    receiver_email = conf.get('smtp', 'smtp_user')
+    subject = f"⚠️ Silver Transformation Failure: {ti.dag_id}"
+    body = f"Task failure {ti.task_id}. View logs at: {ti.log_url}"
+    send_email(to=receiver_email, subject=subject, html_content=body)
 
 default_args = {
     'owner': 'Rafael',
@@ -49,7 +51,7 @@ def brewery_silver_pipeline():
         latest_bronze = pg_hook.get_first("SELECT MAX(updated_at) FROM bronze.breweries")[0]
         
         if not latest_bronze:
-            raise AirflowFailException("DQ Fail: Camada Bronze está vazia.")
+            raise AirflowFailException("DQ Fail: Bronze layer is empty.")
 
         try:
             latest_silver = pg_hook.get_first("SELECT MAX(ingested_at) FROM silver.breweries")[0]
@@ -63,14 +65,14 @@ def brewery_silver_pipeline():
             latest_silver = latest_silver.replace(tzinfo=timezone.utc)
 
         if latest_silver and latest_bronze <= latest_silver:
-            raise AirflowSkipException("Skip: Nenhum dado novo detectado na Bronze.")
+            raise AirflowSkipException("Skip: No new data detected in the Bronze layer.")
         
         return latest_silver.isoformat() if latest_silver else '1900-01-01T00:00:00'
 
     @task(outlets=[SILVER_BREWERIES_DATASET])
     def process_and_load_with_spark(last_processed_ts: str, **context):
         """
-        Processamento Silver: Particionamento por localização conforme requisito do case.
+        Silver Processing: Partitioning by location as per case requirements
         """
         run_id = context['logical_date'].strftime("%Y%m%d_%H%M")
         pg_hook = PostgresHook(postgres_conn_id='supabase_conn')
@@ -99,7 +101,7 @@ def brewery_silver_pipeline():
             if row_count == 0:
                 return 0
 
-            # Transformação e Saneamento
+            # Transformation and Data Cleansing
             df_transformed = df_raw.withColumn("data", F.from_json(F.col("payload"), 
                 "id STRING, name STRING, brewery_type STRING, city STRING, state_province STRING, country STRING, phone STRING, website_url STRING, latitude STRING, longitude STRING, address_1 STRING, address_2 STRING, address_3 STRING")) \
                 .select("data.*") \
@@ -114,7 +116,7 @@ def brewery_silver_pipeline():
                 .withColumn("full_address", F.concat_ws(" ", F.col("address_1"), F.col("address_2"), F.col("address_3"))) \
                 .withColumn("ingested_at", F.current_timestamp())
 
-            # 1. Escrita no Banco (Relacional)
+            # 1. Writing to Relational Database
             df_transformed.write \
                 .format("jdbc") \
                 .option("url", jdbc_url) \
@@ -125,11 +127,10 @@ def brewery_silver_pipeline():
                 .mode("append") \
                 .save()
 
-            # 2. Escrita Parquet Particionada por Localização (Requisito PDF)
-            # Mantemos a subpasta da rodada para snapshotting
+            # 2. Partitioned Parquet Write by Location (PDF Requirement)
             output_path = f'/opt/airflow/data/silver_breweries_pyspark/run_{run_id}'
             
-            # Ao particionar, o Spark criará pastas internas como /country=USA/state_province=California/
+
             df_transformed.write \
                 .mode("overwrite") \
                 .partitionBy("country", "state_province") \
@@ -149,7 +150,7 @@ def brewery_silver_pipeline():
         latest_ts = pg_hook.get_first("SELECT MAX(ingested_at) FROM silver.breweries")[0]
         actual_count = pg_hook.get_first("SELECT COUNT(*) FROM silver.breweries WHERE ingested_at = %s", parameters=(latest_ts,))[0]
         if actual_count != expected_count:
-            raise AirflowFailException(f"Divergência: {expected_count} vs {actual_count}")
+            raise AirflowFailException(f"Data Divergence: {expected_count} vs {actual_count}")
 
     last_ts = check_bronze_delta()
     spark_job = process_and_load_with_spark(last_ts)

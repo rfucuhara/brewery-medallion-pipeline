@@ -9,15 +9,16 @@ import json
 import math
 import logging
 from psycopg2.extras import execute_values
+from airflow.configuration import conf
 
-# Dataset para disparar a Silver
 BRONZE_BREWERIES_DATASET = Dataset("postgres://supabase/bronze/breweries")
 
 def notify_failure(context):
     ti = context['task_instance']
-    subject = f"🚨 Falha no Pipeline Bronze: {ti.dag_id}"
-    body = f"Erro na task {ti.task_id}. Ver detalhes: {ti.log_url}"
-    send_email(to='rfucuhara1401@gmail.com', subject=subject, html_content=body)
+    subject = f"🚨 Fail in Bronze Pipeline: {ti.dag_id}"
+    receiver_email = conf.get('smtp', 'smtp_user')
+    body = f"Task Error {ti.task_id}. See details: {ti.log_url}"
+    send_email(to=receiver_email, subject=subject, html_content=body)
 
 default_args = {
     'owner': 'Rafael',
@@ -26,14 +27,14 @@ default_args = {
     'retry_delay': timedelta(minutes=2),
     'retry_exponential_backoff': True,
     'max_retry_delay': timedelta(minutes=10),
-    'on_failure_callback': notify_failure, # Certifique-se de que a função condiz com a DAG
+    'on_failure_callback': notify_failure, 
     'execution_timeout': timedelta(minutes=30),
 }
 
 @dag(
     dag_id='brewery_ingestion_bronze',
     default_args=default_args,
-    schedule_interval='0 9 * * *', # Ajustado para 9h da manhã
+    schedule_interval='0 9 * * *', 
     start_date=datetime(2026, 2, 22),
     catchup=False,
     tags=['bees', 'bulk_upsert', 'performance', 'real_incremental'],
@@ -62,7 +63,7 @@ def brewery_bronze_pipeline():
 
     @task
     def get_initial_state():
-        """Captura o estado do timestamp antes da carga para comparação delta."""
+        """Captures the state timestamp before loading for delta comparison"""
         pg_hook = PostgresHook(postgres_conn_id='supabase_conn')
         res = pg_hook.get_first("SELECT MAX(updated_at) FROM bronze.breweries")
         return res[0].isoformat() if res and res[0] else None
@@ -120,12 +121,12 @@ def brewery_bronze_pipeline():
 
         return len(validated_rows)
 
-    # Note: A task abaixo define o outlet de forma condicional
+
     @task
     def final_quality_check(initial_timestamp):
         """
-        Validação Baseada em Delta:
-        Só atualiza o Dataset (outlets) se houver mudanças reais.
+        Delta-Based Validation:
+        Only updates the Dataset (outlets) if real changes are detected.
         """
         pg_hook = PostgresHook(postgres_conn_id='supabase_conn')
         
@@ -139,23 +140,23 @@ def brewery_bronze_pipeline():
         actual_updated = pg_hook.get_first(check_query, parameters=params)[0]
         total_count = pg_hook.get_first("SELECT COUNT(*) FROM bronze.breweries")[0]
         
-        logging.info(f"DQ Bronze -> Total: {total_count} | Novos/Alterados neste lote: {actual_updated}")
+        logging.info(f"DQ Bronze -> Total: {total_count} | New/Changed in this batch: {actual_updated}")
         
         if total_count == 0:
-            raise AirflowFailException("DQ Fail: A tabela Bronze está vazia.")
+            raise AirflowFailException("DQ Fail: The Bronze table is empty.")
         
         if actual_updated == 0:
-            # Se nada mudou, damos skip para não disparar downstream desnecessariamente
-            raise AirflowSkipException("Nenhuma alteração detectada na API. Silver não será disparada.")
+            # If no changes are detected, skip execution to avoid unnecessary downstream triggers
+            raise AirflowSkipException("No changes detected in the API. Silver will not be triggered.")
             
         return actual_updated
 
-    # Task dummy apenas para portar o Outlet se houver dados
+    
     @task(outlets=[BRONZE_BREWERIES_DATASET])
     def trigger_dataset_update(count):
-        logging.info(f"Sinalizando atualização de {count} registros para a Camada Silver.")
+        logging.info(f"Signaling update of {count} records to the Silver Layer.")
 
-    # Orquestração
+    # Orchestration Workflow
     health = health_check_supabase()
     setup = setup_database()
     initial_ts = get_initial_state()
@@ -165,7 +166,7 @@ def brewery_bronze_pipeline():
     
     ingestion = fetch_and_validate_to_bronze.expand(page=pages)
     
-    # Se o check passar (não der skip), o trigger_dataset_update é executado
+    
     quality_result = final_quality_check(initial_ts)
     
     initial_ts >> ingestion >> quality_result >> trigger_dataset_update(quality_result)

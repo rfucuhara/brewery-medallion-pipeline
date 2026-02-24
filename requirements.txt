@@ -4,16 +4,16 @@ pandas
 requests
 pyspark==3.4.1
 
-# Database & Transformação
+# Database 
 dbt-postgres
 apache-airflow-providers-postgres
 
-# Qualidade de Código e Linting
+# Quality
 sqlfluff
 sqlfluff-templater-dbt
 
-# Utilitários
+# Tools
 python-dotenv
 
-# --- Framework de Testes ---
+# --- Framework de Tests ---
 pytest
