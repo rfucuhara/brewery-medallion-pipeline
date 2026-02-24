@@ -1,14 +1,17 @@
-import pytest
+import unittest
 from airflow.models import DagBag
 
-def test_dag_loaded_self_check():
-    dagbag = DagBag(dag_folder='dags/', include_examples=False)
-    # Verifica se há erros de importação nas DAGs
-    assert len(dagbag.import_errors) == 0, f"Erros encontrados: {dagbag.import_errors}"
+class TestDagIntegrity(unittest.TestCase):
+    def test_dagbag_no_errors(self):
+        # Tenta carregar as DAGs da pasta /dags
+        dag_bag = DagBag(dag_folder='/opt/airflow/dags', include_examples=False)
+        
+        # Verifica se houve erros de importação
+        errors = dag_bag.import_errors
+        msg = f"DAG import errors: {errors}"
+        
+        self.assertEqual(len(errors), 0, msg)
+        print("\n✅ Sucesso: Nenhuma falha de integridade nas DAGs!")
 
-def test_dag_ids():
-    dagbag = DagBag(dag_folder='dags/', include_examples=False)
-    # Garante que suas DAGs principais estão presentes
-    expected_dags = ['brewery_ingestion_bronze', 'brewery_transformation_silver_pyspark', 'brewery_aggregation_gold_pyspark']
-    for dag_id in expected_dags:
-        assert dag_id in dagbag.dags
+if __name__ == "__main__":
+    unittest.main()

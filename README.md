@@ -68,14 +68,12 @@ Data integrity and pipeline reliability are guaranteed through an automated test
 
 ### What is being tested?
 1. **DAG Integrity Tests**: Verifies that Airflow DAGs are free of syntax errors, directed acyclic graph (DAG) cycles, and have the correct tags and owners configured.
-2. **Transform Validation (PySpark)**: Validates that the Silver layer transformation logic (cleaning and casting) maintains the expected data consistency.
-3. **Schema Enforcement**: Ensures that the requested partitioning (by `location`) is correctly applied to the Parquet files.
 
 ### How to run the tests
 Since the environment is fully containerized, you can run the tests without needing to install local dependencies on your host machine:
 
 ```bash
-docker exec -it airflow_app pytest tests/
+docker exec -u airflow -it airflow_app python3 tests/test_dag_integrity.py
 ```
 
 
